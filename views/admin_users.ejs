@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ユーザー管理 | 時間割共有</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="container">
+    <header class="topbar">
+      <h1>ユーザー管理</h1>
+      <div><a href="/">クラス一覧に戻る</a></div>
+    </header>
+
+    <h2>新規ユーザー作成</h2>
+    <form method="POST" action="/admin/users">
+      <label>ユーザー名
+        <input type="text" name="username" required>
+      </label>
+      <label>初期パスワード
+        <input type="text" name="password" required>
+      </label>
+      <label>権限
+        <select name="role">
+          <option value="viewer">viewer(閲覧のみ)</option>
+          <option value="editor">editor(担当クラスの編集可)</option>
+          <option value="admin">admin(全クラスの閲覧・編集・ユーザー管理)</option>
+        </select>
+      </label>
+      <fieldset>
+        <legend>担当クラス(複数選択可・adminは選択不要)</legend>
+        <% classes.forEach(c => { %>
+          <label class="checkbox">
+            <input type="checkbox" name="classIds" value="<%= c.id %>"> <%= c.name %>
+          </label>
+        <% }) %>
+      </fieldset>
+      <button type="submit">作成する</button>
+    </form>
+
+    <h2>ユーザー一覧</h2>
+    <table class="users-table">
+      <thead>
+        <tr>
+          <th>ユーザー名</th>
+          <th>権限</th>
+          <th>担当クラス</th>
+          <th>パスワード再設定</th>
+          <th>削除</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% users.forEach(u => { %>
+          <tr>
+            <td><%= u.username %></td>
+            <td><%= u.role %></td>
+            <td>
+              <%= (accessMap[u.id] || [])
+                    .map(cid => (classes.find(c => c.id === cid) || {}).name)
+                    .filter(Boolean)
+                    .join(', ') || (u.role === 'admin' ? '(全クラス)' : '-') %>
+            </td>
+            <td>
+              <form method="POST" action="/admin/users/<%= u.id %>/password" style="display:flex; gap:4px;">
+                <input type="text" name="password" placeholder="新パスワード" required style="margin:0;">
+                <button type="submit">変更</button>
+              </form>
+            </td>
+            <td>
+              <form method="POST" action="/admin/users/<%= u.id %>/delete" onsubmit="return confirm('このユーザーを削除しますか？');">
+                <button type="submit">削除</button>
+              </form>
+            </td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </div>
+</body>
+</html>

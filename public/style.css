@@ -1,0 +1,126 @@
+:root {
+  --primary: #2563eb;
+  --border: #d1d5db;
+  --bg: #f8fafc;
+  --text: #1e293b;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: -apple-system, "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  margin: 0;
+}
+
+.container {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 24px 16px;
+}
+
+.container.narrow {
+  max-width: 360px;
+  margin-top: 60px;
+}
+
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.topbar a { margin-right: 12px; }
+
+h1 { font-size: 1.4rem; }
+
+label {
+  display: block;
+  margin-bottom: 12px;
+  font-size: 0.9rem;
+}
+
+label.checkbox { display: inline-block; margin-right: 12px; font-size: 0.85rem; }
+
+input[type="text"], input[type="password"], select {
+  display: block;
+  width: 100%;
+  padding: 8px;
+  margin-top: 4px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+button {
+  background: var(--primary);
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+button:hover { opacity: 0.9; }
+
+.error { color: #dc2626; }
+
+.class-list {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  gap: 12px;
+}
+
+.class-list a {
+  display: block;
+  text-align: center;
+  padding: 20px 8px;
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  text-decoration: none;
+  color: var(--text);
+  font-weight: bold;
+}
+
+.class-list a:hover { border-color: var(--primary); color: var(--primary); }
+
+table.timetable, table.users-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: white;
+  margin-bottom: 16px;
+}
+
+table.timetable th, table.timetable td,
+table.users-table th, table.users-table td {
+  border: 1px solid var(--border);
+  padding: 6px;
+  text-align: center;
+  font-size: 0.85rem;
+}
+
+table.timetable input[type="text"] {
+  width: 100%;
+  padding: 4px;
+  margin: 0;
+  border: 1px solid transparent;
+  text-align: center;
+}
+
+table.timetable input[type="text"]:focus {
+  border-color: var(--primary);
+  outline: none;
+}
+
+fieldset {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  margin-bottom: 12px;
+}

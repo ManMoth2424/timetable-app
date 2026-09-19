@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>クラス一覧 | 時間割共有</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="container">
+    <header class="topbar">
+      <h1>時間割共有サービス</h1>
+      <div>
+        <span><%= user.username %>さん(<%= user.role %>)</span>
+        <% if (user.role === 'admin') { %>
+          <a href="/admin/users">ユーザー管理</a>
+        <% } %>
+        <form method="POST" action="/logout" style="display:inline">
+          <button type="submit">ログアウト</button>
+        </form>
+      </div>
+    </header>
+
+    <h2>クラス一覧</h2>
+    <% if (classes.length === 0) { %>
+      <p>閲覧できるクラスがありません。管理者にお問い合わせください。</p>
+    <% } else { %>
+      <ul class="class-list">
+        <% classes.forEach(c => { %>
+          <li><a href="/timetable/<%= c.id %>"><%= c.name %></a></li>
+        <% }) %>
+      </ul>
+    <% } %>
+  </div>
+</body>
+</html>

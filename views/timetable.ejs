@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title><%= cls.name %>の時間割</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="container">
+    <header class="topbar">
+      <h1><%= cls.name %>の時間割</h1>
+      <div><a href="/">クラス一覧に戻る</a></div>
+    </header>
+
+    <form method="POST" action="/timetable/<%= cls.id %>">
+      <table class="timetable">
+        <thead>
+          <tr>
+            <th>時限</th>
+            <% DAYS.forEach(d => { %><th><%= d %></th><% }) %>
+          </tr>
+        </thead>
+        <tbody>
+          <% PERIODS.forEach(period => { %>
+            <tr>
+              <th><%= period %>限</th>
+              <% DAYS.forEach((d, i) => {
+                   const day = i + 1;
+                   const key = `${day}_${period}`;
+                   const value = grid[key] || '';
+              %>
+                <td>
+                  <% if (canEdit) { %>
+                    <input type="text" name="subject_<%= day %>_<%= period %>" value="<%= value %>" placeholder="-">
+                  <% } else { %>
+                    <%= value || '-' %>
+                  <% } %>
+                </td>
+              <% }) %>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+      <% if (canEdit) { %>
+        <button type="submit">保存する</button>
+      <% } %>
+    </form>
+  </div>
+</body>
+</html>
