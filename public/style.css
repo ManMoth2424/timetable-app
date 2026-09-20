@@ -123,6 +123,45 @@ table.timetable input[type="text"]:focus {
   color: #94a3b8;
 }
 
+.date-form {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.date-form label {
+  margin-bottom: 0;
+}
+
+.warning {
+  background: #fef3c7;
+  border: 1px solid #f59e0b;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 0.85rem;
+}
+
+.warning-small {
+  color: #b45309;
+  font-size: 0.7rem;
+}
+
+tr.changed-row, td.changed-row {
+  background: #fef9c3;
+}
+
+.badge {
+  display: inline-block;
+  margin-left: 4px;
+  font-size: 0.7rem;
+  background: #f59e0b;
+  color: white;
+  padding: 1px 6px;
+  border-radius: 10px;
+}
+
 fieldset {
   border: 1px solid var(--border);
   border-radius: 6px;

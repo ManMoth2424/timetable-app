@@ -1,3 +1,6 @@
+-- 既存の単純な時間割テーブルは使わなくなるため削除
+DROP TABLE IF EXISTS timetable_entries CASCADE;
+
 -- クラス(2-1〜2-9)
 CREATE TABLE IF NOT EXISTS classes (
   id SERIAL PRIMARY KEY,
@@ -20,14 +23,31 @@ CREATE TABLE IF NOT EXISTS user_class_access (
   PRIMARY KEY (user_id, class_id)
 );
 
--- 時間割の中身(曜日×時限×教科)
-CREATE TABLE IF NOT EXISTS timetable_entries (
+-- 基本パターン(A週・B週の雛形)。年に数回しか変わらない想定。
+CREATE TABLE IF NOT EXISTS base_timetable_entries (
   id SERIAL PRIMARY KEY,
   class_id INTEGER REFERENCES classes(id) ON DELETE CASCADE,
-  day_of_week INTEGER NOT NULL, -- 1=月 ... 5=金
-  period INTEGER NOT NULL,      -- 1〜6限
+  week_type CHAR(1) NOT NULL CHECK (week_type IN ('A', 'B')),
+  day_of_week INTEGER NOT NULL, -- 1=月 ... 6=土
+  period INTEGER NOT NULL,
   subject TEXT,
-  UNIQUE (class_id, day_of_week, period)
+  UNIQUE (class_id, week_type, day_of_week, period)
+);
+
+-- どの週がA週/B週かの設定(週の月曜日の日付をキーにする)
+CREATE TABLE IF NOT EXISTS week_types (
+  week_start DATE PRIMARY KEY,
+  week_type CHAR(1) NOT NULL CHECK (week_type IN ('A', 'B'))
+);
+
+-- 日々の授業変更(特定の日付だけの上書き)。ここが毎日編集される部分。
+CREATE TABLE IF NOT EXISTS daily_changes (
+  id SERIAL PRIMARY KEY,
+  class_id INTEGER REFERENCES classes(id) ON DELETE CASCADE,
+  change_date DATE NOT NULL,
+  period INTEGER NOT NULL,
+  subject TEXT,
+  UNIQUE (class_id, change_date, period)
 );
 
 -- 2-1〜2-9のクラスを初期投入

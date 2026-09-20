@@ -10,45 +10,62 @@
   <div class="container">
     <header class="topbar">
       <h1><%= cls.name %>の時間割</h1>
-      <div><a href="/">クラス一覧に戻る</a> <a href="/today">今日の時間割</a></div>
+      <div>
+        <a href="/">クラス一覧</a>
+        <a href="/today">全クラス表示</a>
+      </div>
     </header>
 
-    <form method="POST" action="/timetable/<%= cls.id %>">
-      <table class="timetable">
-        <thead>
-          <tr>
-            <th>時限</th>
-            <% DAYS.forEach(d => { %><th><%= d %></th><% }) %>
-          </tr>
-        </thead>
-        <tbody>
-          <% PERIODS.forEach(period => { %>
-            <tr>
-              <th><%= period %>限</th>
-              <% DAYS.forEach((d, i) => {
-                   const day = i + 1;
-                   const key = `${day}_${period}`;
-                   const value = grid[key] || '';
-                   const periodExists = period <= (day === 6 ? 4 : 6);
-              %>
+    <form method="GET" action="/timetable/<%= cls.id %>" class="date-form">
+      <label>日付
+        <input type="date" name="date" value="<%= date %>">
+      </label>
+      <button type="submit">表示</button>
+    </form>
+
+    <h2>
+      <%= date %>
+      <% if (dayLabel) { %>(<%= dayLabel %><% if (schedule.weekType) { %>・<%= schedule.weekType %>週<% } %>)<% } %>
+    </h2>
+
+    <% if (!schedule.dow) { %>
+      <p>この日は授業がありません。</p>
+    <% } else { %>
+      <% if (!schedule.weekType) { %>
+        <p class="warning">この週がA週/B週か、まだ管理者が設定していません。授業変更のみ表示・入力できます。</p>
+      <% } %>
+
+      <form method="POST" action="/timetable/<%= cls.id %>">
+        <input type="hidden" name="date" value="<%= date %>">
+        <table class="timetable">
+          <thead>
+            <tr><th>時限</th><th>教科</th></tr>
+          </thead>
+          <tbody>
+            <% for (let period = 1; period <= schedule.maxPeriod; period++) {
+                 const entry = schedule.entries[period];
+                 const value = entry ? entry.subject : '';
+                 const changed = entry && entry.changed;
+            %>
+              <tr class="<%= changed ? 'changed-row' : '' %>">
+                <th><%= period %>限</th>
                 <td>
-                  <% if (!periodExists) { %>
-                    <span class="dash">—</span>
-                  <% } else if (canEdit) { %>
-                    <input type="text" name="subject_<%= day %>_<%= period %>" value="<%= value %>" placeholder="-">
+                  <% if (canEdit) { %>
+                    <input type="text" name="subject_<%= period %>" value="<%= value %>" placeholder="-">
                   <% } else { %>
                     <%= value || '-' %>
                   <% } %>
+                  <% if (changed) { %><span class="badge">変更</span><% } %>
                 </td>
-              <% }) %>
-            </tr>
-          <% }) %>
-        </tbody>
-      </table>
-      <% if (canEdit) { %>
-        <button type="submit">保存する</button>
-      <% } %>
-    </form>
+              </tr>
+            <% } %>
+          </tbody>
+        </table>
+        <% if (canEdit) { %>
+          <button type="submit">この日の変更を保存</button>
+        <% } %>
+      </form>
+    <% } %>
   </div>
 </body>
 </html>

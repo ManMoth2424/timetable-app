@@ -12,8 +12,10 @@
       <h1>時間割共有サービス</h1>
       <div>
         <span><%= user.username %>さん(<%= user.role %>)</span>
-        <a href="/today">今日の時間割</a>
+        <a href="/today">全クラス表示</a>
         <% if (user.role === 'admin') { %>
+          <a href="/admin/base">基本パターン設定</a>
+          <a href="/admin/weeks">週タイプ設定</a>
           <a href="/admin/users">ユーザー管理</a>
         <% } %>
         <form method="POST" action="/logout" style="display:inline">

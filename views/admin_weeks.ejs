@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>週タイプ設定 | 時間割共有</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="container">
+    <header class="topbar">
+      <h1>週タイプ設定(A週・B週)</h1>
+      <div>
+        <a href="/">クラス一覧</a>
+        <a href="/today">全クラス表示</a>
+        <a href="/admin/base">基本パターン設定</a>
+      </div>
+    </header>
+
+    <p>その週の月曜日〜土曜日のどこか1日の日付を選べば、自動的にその週全体に設定されます。</p>
+
+    <form method="POST" action="/admin/weeks" class="date-form">
+      <label>日付(その週のいずれかの日)
+        <input type="date" name="date" required>
+      </label>
+      <label>週タイプ
+        <select name="weekType">
+          <option value="A">A週</option>
+          <option value="B">B週</option>
+        </select>
+      </label>
+      <button type="submit">設定する</button>
+    </form>
+
+    <h2>設定済みの週一覧</h2>
+    <% if (weeks.length === 0) { %>
+      <p>まだ何も設定されていません。</p>
+    <% } else { %>
+      <table class="users-table">
+        <thead>
+          <tr><th>週の開始日(月曜)</th><th>タイプ</th><th>削除</th></tr>
+        </thead>
+        <tbody>
+          <% weeks.forEach(w => { %>
+            <tr>
+              <td><%= w.week_start.toISOString ? w.week_start.toISOString().slice(0,10) : w.week_start %></td>
+              <td><%= w.week_type %>週</td>
+              <td>
+                <form method="POST" action="/admin/weeks/<%= w.week_start.toISOString ? w.week_start.toISOString().slice(0,10) : w.week_start %>/delete" onsubmit="return confirm('削除しますか？');">
+                  <button type="submit">削除</button>
+                </form>
+              </td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    <% } %>
+  </div>
+</body>
+</html>

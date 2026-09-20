@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>基本パターン設定 | 時間割共有</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="container">
+    <header class="topbar">
+      <h1>基本パターン設定(A週・B週)</h1>
+      <div>
+        <a href="/">クラス一覧</a>
+        <a href="/today">全クラス表示</a>
+        <a href="/admin/weeks">週タイプ設定</a>
+      </div>
+    </header>
+
+    <form method="GET" action="/admin/base" class="date-form">
+      <label>クラス
+        <select name="classId">
+          <% classes.forEach(c => { %>
+            <option value="<%= c.id %>" <%= cls && String(cls.id) === String(c.id) ? 'selected' : '' %>><%= c.name %></option>
+          <% }) %>
+        </select>
+      </label>
+      <label>週タイプ
+        <select name="weekType">
+          <option value="A" <%= weekType === 'A' ? 'selected' : '' %>>A週</option>
+          <option value="B" <%= weekType === 'B' ? 'selected' : '' %>>B週</option>
+        </select>
+      </label>
+      <button type="submit">切り替え</button>
+    </form>
+
+    <% if (cls) { %>
+      <h2><%= cls.name %> ・ <%= weekType %>週の基本パターン</h2>
+      <form method="POST" action="/admin/base">
+        <input type="hidden" name="classId" value="<%= cls.id %>">
+        <input type="hidden" name="weekType" value="<%= weekType %>">
+        <table class="timetable">
+          <thead>
+            <tr>
+              <th>時限</th>
+              <% DAYS.forEach(d => { %><th><%= d %></th><% }) %>
+            </tr>
+          </thead>
+          <tbody>
+            <% PERIODS.forEach(period => { %>
+              <tr>
+                <th><%= period %>限</th>
+                <% DAYS.forEach((d, i) => {
+                     const day = i + 1;
+                     const key = `${day}_${period}`;
+                     const value = grid[key] || '';
+                     const periodExists = period <= (day === 6 ? 4 : 6);
+                %>
+                  <td>
+                    <% if (!periodExists) { %>
+                      <span class="dash">—</span>
+                    <% } else { %>
+                      <input type="text" name="subject_<%= day %>_<%= period %>" value="<%= value %>" placeholder="-">
+                    <% } %>
+                  </td>
+                <% }) %>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+        <button type="submit">保存する</button>
+      </form>
+    <% } else { %>
+      <p>クラスがありません。先にクラスを作成してください。</p>
+    <% } %>
+  </div>
+</body>
+</html>

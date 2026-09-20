@@ -28,6 +28,43 @@ function maxPeriodForDay(day) {
   return day === 6 ? 4 : 6;
 }
 
+// ---------- 日付まわりのヘルパー ----------
+
+// "YYYY-MM-DD" 文字列 -> Dateオブジェクト(ローカル時間の0時)
+function parseDateStr(dateStr) {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return new Date(y, m - 1, d);
+}
+
+// Dateオブジェクト -> "YYYY-MM-DD" 文字列
+function formatDate(date) {
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, '0');
+  const dd = String(date.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+// 今日の日付文字列(YYYY-MM-DD)
+function todayStr() {
+  return formatDate(new Date());
+}
+
+// 与えられた日付が属する週の月曜日の日付文字列を返す
+function mondayOfWeek(date) {
+  const d = new Date(date);
+  const jsDay = d.getDay(); // 0=日 ... 6=土
+  const diff = jsDay === 0 ? -6 : 1 - jsDay;
+  d.setDate(d.getDate() + diff);
+  return formatDate(d);
+}
+
+// 日付から曜日(1=月...6=土)を返す。日曜はnull。
+function dayOfWeekOf(date) {
+  const jsDay = date.getDay();
+  if (jsDay === 0) return null;
+  return jsDay;
+}
+
 // ---------- 認証まわりのミドルウェア ----------
 function requireLogin(req, res, next) {
   if (!req.session.user) return res.redirect('/login');
@@ -40,14 +77,6 @@ function requireAdmin(req, res, next) {
   next();
 }
 
-// 今日の曜日を1(月)〜6(土)で返す。日曜はnull。
-// JSのgetDay()は0=日,1=月,...,6=土なので、そのままday_of_weekとして使える。
-function getTodayDayOfWeek() {
-  const jsDay = new Date().getDay();
-  if (jsDay === 0) return null;
-  return jsDay;
-}
-
 async function checkAccess(user, classId) {
   if (user.role === 'admin') return true;
   const { rows } = await pool.query(
@@ -55,6 +84,41 @@ async function checkAccess(user, classId) {
     [user.id, classId]
   );
   return rows.length > 0;
+}
+
+// 指定クラス・指定日の「実際の時間割」(基本パターン+その日の変更)を計算する
+async function getEffectiveSchedule(classId, dateStr) {
+  const date = parseDateStr(dateStr);
+  const dow = dayOfWeekOf(date);
+  if (!dow) {
+    return { dow: null, weekType: null, maxPeriod: 0, entries: {} };
+  }
+
+  const monday = mondayOfWeek(date);
+  const weekRow = (await pool.query('SELECT week_type FROM week_types WHERE week_start=$1', [monday])).rows[0];
+  const weekType = weekRow ? weekRow.week_type : null;
+
+  const entries = {};
+
+  if (weekType) {
+    const base = await pool.query(
+      'SELECT period, subject FROM base_timetable_entries WHERE class_id=$1 AND week_type=$2 AND day_of_week=$3',
+      [classId, weekType, dow]
+    );
+    base.rows.forEach((r) => {
+      entries[r.period] = { subject: r.subject || '', changed: false };
+    });
+  }
+
+  const changes = await pool.query(
+    'SELECT period, subject FROM daily_changes WHERE class_id=$1 AND change_date=$2',
+    [classId, dateStr]
+  );
+  changes.rows.forEach((r) => {
+    entries[r.period] = { subject: r.subject || '', changed: true };
+  });
+
+  return { dow, weekType, maxPeriod: maxPeriodForDay(dow), entries };
 }
 
 // ---------- ログイン / ログアウト ----------
@@ -98,7 +162,7 @@ app.get('/', requireLogin, async (req, res) => {
   res.render('dashboard', { user, classes });
 });
 
-// ---------- 時間割の表示 ----------
+// ---------- クラス別:指定日の実際の時間割の表示・編集 ----------
 app.get('/timetable/:classId', requireLogin, async (req, res) => {
   const user = req.session.user;
   const classId = req.params.classId;
@@ -109,25 +173,140 @@ app.get('/timetable/:classId', requireLogin, async (req, res) => {
   const cls = (await pool.query('SELECT * FROM classes WHERE id=$1', [classId])).rows[0];
   if (!cls) return res.status(404).send('クラスが見つかりません');
 
-  const entries = (await pool.query('SELECT * FROM timetable_entries WHERE class_id=$1', [classId])).rows;
-  const grid = {};
-  entries.forEach((e) => {
-    grid[`${e.day_of_week}_${e.period}`] = e.subject;
-  });
-
+  const date = req.query.date || todayStr();
+  const schedule = await getEffectiveSchedule(classId, date);
   const canEdit = user.role === 'admin' || user.role === 'editor';
+  const dayLabel = schedule.dow ? `${DAYS[schedule.dow - 1]}曜日` : null;
 
-  res.render('timetable', { user, cls, grid, DAYS, PERIODS, canEdit });
+  res.render('timetable', { user, cls, date, schedule, DAYS, PERIODS, canEdit, dayLabel });
 });
 
-// ---------- 時間割の保存 ----------
 app.post('/timetable/:classId', requireLogin, async (req, res) => {
   const user = req.session.user;
   const classId = req.params.classId;
+  const date = req.body.date || todayStr();
 
   const allowed = await checkAccess(user, classId);
   const canEdit = allowed && (user.role === 'admin' || user.role === 'editor');
   if (!canEdit) return res.status(403).send('編集する権限がありません');
+
+  const dow = dayOfWeekOf(parseDateStr(date));
+  if (!dow) return res.redirect(`/timetable/${classId}?date=${date}`);
+
+  const maxP = maxPeriodForDay(dow);
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    for (const period of PERIODS) {
+      if (period > maxP) continue;
+      const key = `subject_${period}`;
+      const subject = (req.body[key] || '').trim();
+      await client.query(
+        `INSERT INTO daily_changes (class_id, change_date, period, subject)
+         VALUES ($1, $2, $3, $4)
+         ON CONFLICT (class_id, change_date, period)
+         DO UPDATE SET subject = EXCLUDED.subject`,
+        [classId, date, period, subject]
+      );
+    }
+    await client.query('COMMIT');
+  } catch (e) {
+    await client.query('ROLLBACK');
+    throw e;
+  } finally {
+    client.release();
+  }
+
+  res.redirect(`/timetable/${classId}?date=${date}`);
+});
+
+// ---------- 全クラス:指定日の実際の時間割の表示・編集(adminのみ編集可) ----------
+app.get('/today', requireLogin, async (req, res) => {
+  const user = req.session.user;
+  const date = req.query.date || todayStr();
+  const dow = dayOfWeekOf(parseDateStr(date));
+
+  const classes = (await pool.query('SELECT * FROM classes ORDER BY name')).rows;
+
+  const scheduleByClass = {};
+  for (const cls of classes) {
+    scheduleByClass[cls.id] = await getEffectiveSchedule(cls.id, date);
+  }
+
+  const canEdit = user.role === 'admin';
+  const dayLabel = dow ? `${DAYS[dow - 1]}曜日` : null;
+  const periods = dow ? PERIODS.filter((p) => p <= maxPeriodForDay(dow)) : [];
+
+  res.render('today', { user, classes, date, dow, dayLabel, periods, scheduleByClass, canEdit });
+});
+
+app.post('/today', requireAdmin, async (req, res) => {
+  const date = req.body.date || todayStr();
+  const dow = dayOfWeekOf(parseDateStr(date));
+  if (!dow) return res.redirect(`/today?date=${date}`);
+
+  const maxP = maxPeriodForDay(dow);
+  const classes = (await pool.query('SELECT * FROM classes')).rows;
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    for (const cls of classes) {
+      for (const period of PERIODS) {
+        if (period > maxP) continue;
+        const key = `subject_${cls.id}_${period}`;
+        if (!(key in req.body)) continue; // このクラス・この時限は今回のフォームに含まれていない
+        const subject = (req.body[key] || '').trim();
+        await client.query(
+          `INSERT INTO daily_changes (class_id, change_date, period, subject)
+           VALUES ($1, $2, $3, $4)
+           ON CONFLICT (class_id, change_date, period)
+           DO UPDATE SET subject = EXCLUDED.subject`,
+          [cls.id, date, period, subject]
+        );
+      }
+    }
+    await client.query('COMMIT');
+  } catch (e) {
+    await client.query('ROLLBACK');
+    throw e;
+  } finally {
+    client.release();
+  }
+
+  res.redirect(`/today?date=${date}`);
+});
+
+// ---------- 管理者: 基本パターン(A週/B週)の設定 ----------
+app.get('/admin/base', requireAdmin, async (req, res) => {
+  const classes = (await pool.query('SELECT * FROM classes ORDER BY name')).rows;
+  const classId = req.query.classId || (classes[0] && classes[0].id);
+  const weekType = req.query.weekType === 'B' ? 'B' : 'A';
+
+  const cls = classes.find((c) => String(c.id) === String(classId));
+
+  let grid = {};
+  if (cls) {
+    const rows = (
+      await pool.query(
+        'SELECT day_of_week, period, subject FROM base_timetable_entries WHERE class_id=$1 AND week_type=$2',
+        [cls.id, weekType]
+      )
+    ).rows;
+    rows.forEach((r) => {
+      grid[`${r.day_of_week}_${r.period}`] = r.subject || '';
+    });
+  }
+
+  res.render('admin_base', { user: req.session.user, classes, cls, weekType, grid, DAYS, PERIODS });
+});
+
+app.post('/admin/base', requireAdmin, async (req, res) => {
+  const { classId, weekType } = req.body;
+  if (!classId || (weekType !== 'A' && weekType !== 'B')) {
+    return res.status(400).send('不正なパラメータです');
+  }
 
   const client = await pool.connect();
   try {
@@ -139,11 +318,11 @@ app.post('/timetable/:classId', requireLogin, async (req, res) => {
         const key = `subject_${day}_${period}`;
         const subject = (req.body[key] || '').trim();
         await client.query(
-          `INSERT INTO timetable_entries (class_id, day_of_week, period, subject)
-           VALUES ($1, $2, $3, $4)
-           ON CONFLICT (class_id, day_of_week, period)
+          `INSERT INTO base_timetable_entries (class_id, week_type, day_of_week, period, subject)
+           VALUES ($1, $2, $3, $4, $5)
+           ON CONFLICT (class_id, week_type, day_of_week, period)
            DO UPDATE SET subject = EXCLUDED.subject`,
-          [classId, day, period, subject]
+          [classId, weekType, day, period, subject]
         );
       }
     }
@@ -155,64 +334,32 @@ app.post('/timetable/:classId', requireLogin, async (req, res) => {
     client.release();
   }
 
-  res.redirect(`/timetable/${classId}`);
+  res.redirect(`/admin/base?classId=${classId}&weekType=${weekType}`);
 });
 
-// ---------- 今日の全クラス一覧 ----------
-app.get('/today', requireLogin, async (req, res) => {
-  const user = req.session.user;
-  const day = getTodayDayOfWeek();
-  const classes = (await pool.query('SELECT * FROM classes ORDER BY name')).rows;
-
-  const entriesByClass = {};
-  if (day) {
-    const entries = (await pool.query('SELECT * FROM timetable_entries WHERE day_of_week=$1', [day])).rows;
-    entries.forEach((e) => {
-      entriesByClass[e.class_id] = entriesByClass[e.class_id] || {};
-      entriesByClass[e.class_id][e.period] = e.subject;
-    });
-  }
-
-  const canEdit = user.role === 'admin';
-  const todayLabel = day ? `${DAYS[day - 1]}曜日` : null;
-  const periodsToday = day ? PERIODS.filter((p) => p <= maxPeriodForDay(day)) : [];
-
-  res.render('today', { user, classes, entriesByClass, periodsToday, todayLabel, canEdit, hasClasses: !!day });
+// ---------- 管理者: 週タイプ(A週/B週)カレンダーの設定 ----------
+app.get('/admin/weeks', requireAdmin, async (req, res) => {
+  const weeks = (await pool.query('SELECT * FROM week_types ORDER BY week_start DESC')).rows;
+  res.render('admin_weeks', { user: req.session.user, weeks });
 });
 
-app.post('/today', requireAdmin, async (req, res) => {
-  const day = getTodayDayOfWeek();
-  if (!day) return res.redirect('/today');
-
-  const maxP = maxPeriodForDay(day);
-  const classes = (await pool.query('SELECT * FROM classes')).rows;
-
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-    for (const cls of classes) {
-      for (const period of PERIODS) {
-        if (period > maxP) continue;
-        const key = `subject_${cls.id}_${period}`;
-        const subject = (req.body[key] || '').trim();
-        await client.query(
-          `INSERT INTO timetable_entries (class_id, day_of_week, period, subject)
-           VALUES ($1, $2, $3, $4)
-           ON CONFLICT (class_id, day_of_week, period)
-           DO UPDATE SET subject = EXCLUDED.subject`,
-          [cls.id, day, period, subject]
-        );
-      }
-    }
-    await client.query('COMMIT');
-  } catch (e) {
-    await client.query('ROLLBACK');
-    throw e;
-  } finally {
-    client.release();
+app.post('/admin/weeks', requireAdmin, async (req, res) => {
+  const { date, weekType } = req.body;
+  if (!date || (weekType !== 'A' && weekType !== 'B')) {
+    return res.status(400).send('不正なパラメータです');
   }
+  const monday = mondayOfWeek(parseDateStr(date));
+  await pool.query(
+    `INSERT INTO week_types (week_start, week_type) VALUES ($1, $2)
+     ON CONFLICT (week_start) DO UPDATE SET week_type = EXCLUDED.week_type`,
+    [monday, weekType]
+  );
+  res.redirect('/admin/weeks');
+});
 
-  res.redirect('/today');
+app.post('/admin/weeks/:weekStart/delete', requireAdmin, async (req, res) => {
+  await pool.query('DELETE FROM week_types WHERE week_start=$1', [req.params.weekStart]);
+  res.redirect('/admin/weeks');
 });
 
 // ---------- 管理者: ユーザー管理 ----------
@@ -225,7 +372,7 @@ app.get('/admin/users', requireAdmin, async (req, res) => {
     accessMap[r.user_id] = accessMap[r.user_id] || [];
     accessMap[r.user_id].push(r.class_id);
   });
-  res.render('admin_users', { users, classes, accessMap });
+  res.render('admin_users', { user: req.session.user, users, classes, accessMap });
 });
 
 app.post('/admin/users', requireAdmin, async (req, res) => {
