@@ -10,7 +10,7 @@
   <div class="container">
     <header class="topbar">
       <h1><%= cls.name %>の時間割</h1>
-      <div><a href="/">クラス一覧に戻る</a></div>
+      <div><a href="/">クラス一覧に戻る</a> <a href="/today">今日の時間割</a></div>
     </header>
 
     <form method="POST" action="/timetable/<%= cls.id %>">
@@ -29,9 +29,12 @@
                    const day = i + 1;
                    const key = `${day}_${period}`;
                    const value = grid[key] || '';
+                   const periodExists = period <= (day === 6 ? 4 : 6);
               %>
                 <td>
-                  <% if (canEdit) { %>
+                  <% if (!periodExists) { %>
+                    <span class="dash">—</span>
+                  <% } else if (canEdit) { %>
                     <input type="text" name="subject_<%= day %>_<%= period %>" value="<%= value %>" placeholder="-">
                   <% } else { %>
                     <%= value || '-' %>

@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>今日の時間割 | 時間割共有</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="container">
+    <header class="topbar">
+      <h1>今日の時間割<% if (todayLabel) { %>(<%= todayLabel %>)<% } %></h1>
+      <div>
+        <a href="/">クラス一覧</a>
+        <% if (user.role === 'admin') { %>
+          <a href="/admin/users">ユーザー管理</a>
+        <% } %>
+        <form method="POST" action="/logout" style="display:inline">
+          <button type="submit">ログアウト</button>
+        </form>
+      </div>
+    </header>
+
+    <% if (!hasClasses) { %>
+      <p>今日は授業がありません。</p>
+    <% } else { %>
+      <form method="POST" action="/today">
+        <table class="timetable">
+          <thead>
+            <tr>
+              <th>クラス</th>
+              <% periodsToday.forEach(period => { %><th><%= period %>限</th><% }) %>
+            </tr>
+          </thead>
+          <tbody>
+            <% classes.forEach(c => { %>
+              <tr>
+                <th><%= c.name %></th>
+                <% periodsToday.forEach(period => {
+                     const value = (entriesByClass[c.id] && entriesByClass[c.id][period]) || '';
+                %>
+                  <td>
+                    <% if (canEdit) { %>
+                      <input type="text" name="subject_<%= c.id %>_<%= period %>" value="<%= value %>" placeholder="-">
+                    <% } else { %>
+                      <%= value || '-' %>
+                    <% } %>
+                  </td>
+                <% }) %>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+        <% if (canEdit) { %>
+          <button type="submit">保存する</button>
+        <% } %>
+      </form>
+    <% } %>
+  </div>
+</body>
+</html>

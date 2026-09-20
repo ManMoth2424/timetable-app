@@ -20,8 +20,13 @@ app.use(
   })
 );
 
-const DAYS = ['月', '火', '水', '木', '金'];
+const DAYS = ['月', '火', '水', '木', '金', '土'];
 const PERIODS = [1, 2, 3, 4, 5, 6];
+
+// その曜日の最大時限数(土曜は4限まで)
+function maxPeriodForDay(day) {
+  return day === 6 ? 4 : 6;
+}
 
 // ---------- 認証まわりのミドルウェア ----------
 function requireLogin(req, res, next) {
@@ -33,6 +38,14 @@ function requireAdmin(req, res, next) {
     return res.status(403).send('この操作には管理者権限が必要です');
   }
   next();
+}
+
+// 今日の曜日を1(月)〜6(土)で返す。日曜はnull。
+// JSのgetDay()は0=日,1=月,...,6=土なので、そのままday_of_weekとして使える。
+function getTodayDayOfWeek() {
+  const jsDay = new Date().getDay();
+  if (jsDay === 0) return null;
+  return jsDay;
 }
 
 async function checkAccess(user, classId) {
@@ -119,8 +132,10 @@ app.post('/timetable/:classId', requireLogin, async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    for (const day of [1, 2, 3, 4, 5]) {
+    for (const day of [1, 2, 3, 4, 5, 6]) {
+      const maxP = maxPeriodForDay(day);
       for (const period of PERIODS) {
+        if (period > maxP) continue;
         const key = `subject_${day}_${period}`;
         const subject = (req.body[key] || '').trim();
         await client.query(
@@ -141,6 +156,63 @@ app.post('/timetable/:classId', requireLogin, async (req, res) => {
   }
 
   res.redirect(`/timetable/${classId}`);
+});
+
+// ---------- 今日の全クラス一覧 ----------
+app.get('/today', requireLogin, async (req, res) => {
+  const user = req.session.user;
+  const day = getTodayDayOfWeek();
+  const classes = (await pool.query('SELECT * FROM classes ORDER BY name')).rows;
+
+  const entriesByClass = {};
+  if (day) {
+    const entries = (await pool.query('SELECT * FROM timetable_entries WHERE day_of_week=$1', [day])).rows;
+    entries.forEach((e) => {
+      entriesByClass[e.class_id] = entriesByClass[e.class_id] || {};
+      entriesByClass[e.class_id][e.period] = e.subject;
+    });
+  }
+
+  const canEdit = user.role === 'admin';
+  const todayLabel = day ? `${DAYS[day - 1]}曜日` : null;
+  const periodsToday = day ? PERIODS.filter((p) => p <= maxPeriodForDay(day)) : [];
+
+  res.render('today', { user, classes, entriesByClass, periodsToday, todayLabel, canEdit, hasClasses: !!day });
+});
+
+app.post('/today', requireAdmin, async (req, res) => {
+  const day = getTodayDayOfWeek();
+  if (!day) return res.redirect('/today');
+
+  const maxP = maxPeriodForDay(day);
+  const classes = (await pool.query('SELECT * FROM classes')).rows;
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    for (const cls of classes) {
+      for (const period of PERIODS) {
+        if (period > maxP) continue;
+        const key = `subject_${cls.id}_${period}`;
+        const subject = (req.body[key] || '').trim();
+        await client.query(
+          `INSERT INTO timetable_entries (class_id, day_of_week, period, subject)
+           VALUES ($1, $2, $3, $4)
+           ON CONFLICT (class_id, day_of_week, period)
+           DO UPDATE SET subject = EXCLUDED.subject`,
+          [cls.id, day, period, subject]
+        );
+      }
+    }
+    await client.query('COMMIT');
+  } catch (e) {
+    await client.query('ROLLBACK');
+    throw e;
+  } finally {
+    client.release();
+  }
+
+  res.redirect('/today');
 });
 
 // ---------- 管理者: ユーザー管理 ----------

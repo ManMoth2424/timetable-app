@@ -119,6 +119,10 @@ table.timetable input[type="text"]:focus {
   outline: none;
 }
 
+.dash {
+  color: #94a3b8;
+}
+
 fieldset {
   border: 1px solid var(--border);
   border-radius: 6px;
