@@ -13,6 +13,11 @@
       <div>
         <a href="/">クラス一覧</a>
         <a href="/today">全クラス表示</a>
+        <% if (user.role === 'admin') { %>
+          <a href="/admin/base">基本パターン設定</a>
+          <a href="/admin/weeks">週タイプ設定</a>
+          <a href="/admin/day-overrides">曜日振替設定</a>
+        <% } %>
       </div>
     </header>
 
@@ -24,15 +29,19 @@
     </form>
 
     <h2>
-      <%= date %>
-      <% if (dayLabel) { %>(<%= dayLabel %><% if (schedule.weekType) { %>・<%= schedule.weekType %>週<% } %>)<% } %>
+      <%= date %>(<%= actualLabel %>)
     </h2>
 
-    <% if (!schedule.dow) { %>
+    <% if (!schedule.effectiveDay) { %>
       <p>この日は授業がありません。</p>
     <% } else { %>
+      <% if (schedule.substituteDay) { %>
+        <p class="warning"><%= effectiveLabel %>の時間割で実施する日として設定されています。</p>
+      <% } %>
       <% if (!schedule.weekType) { %>
         <p class="warning">この週がA週/B週か、まだ管理者が設定していません。授業変更のみ表示・入力できます。</p>
+      <% } else { %>
+        <p class="warning-small"><%= schedule.weekType %>週</p>
       <% } %>
 
       <form method="POST" action="/timetable/<%= cls.id %>">

@@ -16,6 +16,7 @@
         <% if (user.role === 'admin') { %>
           <a href="/admin/base">基本パターン設定</a>
           <a href="/admin/weeks">週タイプ設定</a>
+          <a href="/admin/day-overrides">曜日振替設定</a>
           <a href="/admin/users">ユーザー管理</a>
         <% } %>
         <form method="POST" action="/logout" style="display:inline">
@@ -32,13 +33,15 @@
     </form>
 
     <h2>
-      <%= date %>
-      <% if (dayLabel) { %>(<%= dayLabel %>)<% } %>
+      <%= date %>(<%= actualLabel %>)
     </h2>
 
-    <% if (!dow) { %>
+    <% if (!effectiveDay) { %>
       <p>この日は授業がありません。</p>
     <% } else { %>
+      <% if (effectiveLabel && actualLabel && effectiveLabel !== actualLabel) { %>
+        <p class="warning"><%= effectiveLabel %>の時間割で実施する日として設定されています。</p>
+      <% } %>
       <form method="POST" action="/today">
         <input type="hidden" name="date" value="<%= date %>">
         <table class="timetable">

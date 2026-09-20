@@ -86,12 +86,21 @@ async function checkAccess(user, classId) {
   return rows.length > 0;
 }
 
+// 指定日の「曜日振替」設定を取得(なければnull)
+async function getSubstituteDay(dateStr) {
+  const row = (await pool.query('SELECT substitute_day FROM day_overrides WHERE change_date=$1', [dateStr])).rows[0];
+  return row ? row.substitute_day : null;
+}
+
 // 指定クラス・指定日の「実際の時間割」(基本パターン+その日の変更)を計算する
 async function getEffectiveSchedule(classId, dateStr) {
   const date = parseDateStr(dateStr);
-  const dow = dayOfWeekOf(date);
-  if (!dow) {
-    return { dow: null, weekType: null, maxPeriod: 0, entries: {} };
+  const actualDow = dayOfWeekOf(date); // カレンダー上の実際の曜日(日曜はnull)
+  const substituteDay = await getSubstituteDay(dateStr);
+  const effectiveDay = substituteDay || actualDow; // 基本パターンを引く際に使う曜日
+
+  if (!effectiveDay) {
+    return { actualDow, effectiveDay: null, substituteDay: null, weekType: null, maxPeriod: 0, entries: {} };
   }
 
   const monday = mondayOfWeek(date);
@@ -103,7 +112,7 @@ async function getEffectiveSchedule(classId, dateStr) {
   if (weekType) {
     const base = await pool.query(
       'SELECT period, subject FROM base_timetable_entries WHERE class_id=$1 AND week_type=$2 AND day_of_week=$3',
-      [classId, weekType, dow]
+      [classId, weekType, effectiveDay]
     );
     base.rows.forEach((r) => {
       entries[r.period] = { subject: r.subject || '', changed: false };
@@ -118,7 +127,14 @@ async function getEffectiveSchedule(classId, dateStr) {
     entries[r.period] = { subject: r.subject || '', changed: true };
   });
 
-  return { dow, weekType, maxPeriod: maxPeriodForDay(dow), entries };
+  return {
+    actualDow,
+    effectiveDay,
+    substituteDay,
+    weekType,
+    maxPeriod: maxPeriodForDay(effectiveDay),
+    entries,
+  };
 }
 
 // ---------- ログイン / ログアウト ----------
@@ -176,9 +192,10 @@ app.get('/timetable/:classId', requireLogin, async (req, res) => {
   const date = req.query.date || todayStr();
   const schedule = await getEffectiveSchedule(classId, date);
   const canEdit = user.role === 'admin' || user.role === 'editor';
-  const dayLabel = schedule.dow ? `${DAYS[schedule.dow - 1]}曜日` : null;
+  const actualLabel = schedule.actualDow ? `${DAYS[schedule.actualDow - 1]}曜日` : '休日';
+  const effectiveLabel = schedule.effectiveDay ? `${DAYS[schedule.effectiveDay - 1]}曜日` : null;
 
-  res.render('timetable', { user, cls, date, schedule, DAYS, PERIODS, canEdit, dayLabel });
+  res.render('timetable', { user, cls, date, schedule, DAYS, PERIODS, canEdit, actualLabel, effectiveLabel });
 });
 
 app.post('/timetable/:classId', requireLogin, async (req, res) => {
@@ -191,9 +208,11 @@ app.post('/timetable/:classId', requireLogin, async (req, res) => {
   if (!canEdit) return res.status(403).send('編集する権限がありません');
 
   const dow = dayOfWeekOf(parseDateStr(date));
-  if (!dow) return res.redirect(`/timetable/${classId}?date=${date}`);
+  const substituteDay = await getSubstituteDay(date);
+  const effectiveDay = substituteDay || dow;
+  if (!effectiveDay) return res.redirect(`/timetable/${classId}?date=${date}`);
 
-  const maxP = maxPeriodForDay(dow);
+  const maxP = maxPeriodForDay(effectiveDay);
 
   const client = await pool.connect();
   try {
@@ -225,7 +244,9 @@ app.post('/timetable/:classId', requireLogin, async (req, res) => {
 app.get('/today', requireLogin, async (req, res) => {
   const user = req.session.user;
   const date = req.query.date || todayStr();
-  const dow = dayOfWeekOf(parseDateStr(date));
+  const actualDow = dayOfWeekOf(parseDateStr(date));
+  const substituteDay = await getSubstituteDay(date);
+  const effectiveDay = substituteDay || actualDow;
 
   const classes = (await pool.query('SELECT * FROM classes ORDER BY name')).rows;
 
@@ -235,18 +256,31 @@ app.get('/today', requireLogin, async (req, res) => {
   }
 
   const canEdit = user.role === 'admin';
-  const dayLabel = dow ? `${DAYS[dow - 1]}曜日` : null;
-  const periods = dow ? PERIODS.filter((p) => p <= maxPeriodForDay(dow)) : [];
+  const actualLabel = actualDow ? `${DAYS[actualDow - 1]}曜日` : '休日';
+  const effectiveLabel = effectiveDay ? `${DAYS[effectiveDay - 1]}曜日` : null;
+  const periods = effectiveDay ? PERIODS.filter((p) => p <= maxPeriodForDay(effectiveDay)) : [];
 
-  res.render('today', { user, classes, date, dow, dayLabel, periods, scheduleByClass, canEdit });
+  res.render('today', {
+    user,
+    classes,
+    date,
+    effectiveDay,
+    actualLabel,
+    effectiveLabel,
+    periods,
+    scheduleByClass,
+    canEdit,
+  });
 });
 
 app.post('/today', requireAdmin, async (req, res) => {
   const date = req.body.date || todayStr();
   const dow = dayOfWeekOf(parseDateStr(date));
-  if (!dow) return res.redirect(`/today?date=${date}`);
+  const substituteDay = await getSubstituteDay(date);
+  const effectiveDay = substituteDay || dow;
+  if (!effectiveDay) return res.redirect(`/today?date=${date}`);
 
-  const maxP = maxPeriodForDay(dow);
+  const maxP = maxPeriodForDay(effectiveDay);
   const classes = (await pool.query('SELECT * FROM classes')).rows;
 
   const client = await pool.connect();
@@ -360,6 +394,28 @@ app.post('/admin/weeks', requireAdmin, async (req, res) => {
 app.post('/admin/weeks/:weekStart/delete', requireAdmin, async (req, res) => {
   await pool.query('DELETE FROM week_types WHERE week_start=$1', [req.params.weekStart]);
   res.redirect('/admin/weeks');
+});
+
+// ---------- 管理者: 曜日振替の設定 ----------
+app.get('/admin/day-overrides', requireAdmin, async (req, res) => {
+  const overrides = (await pool.query('SELECT * FROM day_overrides ORDER BY change_date DESC')).rows;
+  res.render('admin_day_overrides', { user: req.session.user, overrides, DAYS });
+});
+
+app.post('/admin/day-overrides', requireAdmin, async (req, res) => {
+  const { date, substituteDay } = req.body;
+  if (!date || !substituteDay) return res.status(400).send('不正なパラメータです');
+  await pool.query(
+    `INSERT INTO day_overrides (change_date, substitute_day) VALUES ($1, $2)
+     ON CONFLICT (change_date) DO UPDATE SET substitute_day = EXCLUDED.substitute_day`,
+    [date, substituteDay]
+  );
+  res.redirect('/admin/day-overrides');
+});
+
+app.post('/admin/day-overrides/:date/delete', requireAdmin, async (req, res) => {
+  await pool.query('DELETE FROM day_overrides WHERE change_date=$1', [req.params.date]);
+  res.redirect('/admin/day-overrides');
 });
 
 // ---------- 管理者: ユーザー管理 ----------

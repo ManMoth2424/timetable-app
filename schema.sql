@@ -50,6 +50,13 @@ CREATE TABLE IF NOT EXISTS daily_changes (
   UNIQUE (class_id, change_date, period)
 );
 
+-- 曜日振替(特定の日付を、別の曜日の基本パターンで実施する設定)
+-- 例:9/24(水)を「金曜日の時間割」で実施する場合、change_date=2026-09-24, substitute_day=5
+CREATE TABLE IF NOT EXISTS day_overrides (
+  change_date DATE PRIMARY KEY,
+  substitute_day INTEGER NOT NULL CHECK (substitute_day BETWEEN 1 AND 6)
+);
+
 -- 2-1〜2-9のクラスを初期投入
 INSERT INTO classes (name)
 SELECT v FROM (VALUES

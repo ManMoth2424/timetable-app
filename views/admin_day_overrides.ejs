@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>曜日振替設定 | 時間割共有</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="container">
+    <header class="topbar">
+      <h1>曜日振替設定</h1>
+      <div>
+        <a href="/">クラス一覧</a>
+        <a href="/today">全クラス表示</a>
+        <a href="/admin/base">基本パターン設定</a>
+        <a href="/admin/weeks">週タイプ設定</a>
+      </div>
+    </header>
+
+    <p>特定の日を「別の曜日の時間割」で実施する場合に設定します。(例:9/24(水)を金曜日の時間割で実施する)</p>
+
+    <form method="POST" action="/admin/day-overrides" class="date-form">
+      <label>対象の日付
+        <input type="date" name="date" required>
+      </label>
+      <label>どの曜日の時間割で実施するか
+        <select name="substituteDay">
+          <% DAYS.forEach((d, i) => { %>
+            <option value="<%= i + 1 %>"><%= d %>曜日の時間割</option>
+          <% }) %>
+        </select>
+      </label>
+      <button type="submit">設定する</button>
+    </form>
+
+    <h2>設定済みの曜日振替一覧</h2>
+    <% if (overrides.length === 0) { %>
+      <p>まだ何も設定されていません。</p>
+    <% } else { %>
+      <table class="users-table">
+        <thead>
+          <tr><th>日付</th><th>実施する曜日</th><th>削除</th></tr>
+        </thead>
+        <tbody>
+          <% overrides.forEach(o => {
+               const dateStr = o.change_date.toISOString ? o.change_date.toISOString().slice(0,10) : o.change_date;
+          %>
+            <tr>
+              <td><%= dateStr %></td>
+              <td><%= DAYS[o.substitute_day - 1] %>曜日の時間割</td>
+              <td>
+                <form method="POST" action="/admin/day-overrides/<%= dateStr %>/delete" onsubmit="return confirm('削除しますか？');">
+                  <button type="submit">削除</button>
+                </form>
+              </td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    <% } %>
+  </div>
+</body>
+</html>
